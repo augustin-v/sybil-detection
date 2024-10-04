@@ -1,30 +1,47 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { Search, AlertTriangle } from 'lucide-react'
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-
-// Mock data for the chart
-const data = [
-  { name: 'Jan', value: 400 },
-  { name: 'Feb', value: 300 },
-  { name: 'Mar', value: 600 },
-  { name: 'Apr', value: 800 },
-  { name: 'May', value: 500 },
-  { name: 'Jun', value: 700 },
-]
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Search } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function Home() {
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const router = useRouter();
+
+  // Load search history from localStorage when the component mounts
+  useEffect(() => {
+    const storedHistory = localStorage.getItem('searchHistory');
+    if (storedHistory) {
+      setSearchHistory(JSON.parse(storedHistory));
+    }
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Implement search functionality here
-    console.log('Searching for:', searchQuery)
-  }
+    e.preventDefault();
+
+    if (searchQuery.trim() === '') {
+      alert("Please enter a transaction hash.");
+      return;
+    }
+
+    // Update search history and store in localStorage
+    const updatedHistory = Array.from(new Set([searchQuery, ...searchHistory])).slice(0, 5);
+
+    setSearchHistory(updatedHistory);
+    localStorage.setItem('searchHistory', JSON.stringify(updatedHistory));
+
+    // Redirect to the results page
+    router.push(`/results?page=transaction&hash=${encodeURIComponent(searchQuery)}`);
+  };
+
+  // Handle when a user clicks a history item to auto-fill the input
+  const handleHistoryClick = (query: string) => {
+    setSearchQuery(query);
+  };
 
   return (
     <div className="space-y-8">
@@ -33,10 +50,11 @@ export default function Home() {
       <form onSubmit={handleSearch} className="flex gap-2">
         <Input
           type="text"
-          placeholder="Search transaction hash or account ID"
+          placeholder="Search transaction hash"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="flex-grow"
+          required
         />
         <Button type="submit">
           <Search className="w-4 h-4 mr-2" />
@@ -44,40 +62,29 @@ export default function Home() {
         </Button>
       </form>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Display the search history */}
+      <div>
         <Card>
-          <CardHeader>
-            <CardTitle>Recent Detections</CardTitle>
-          </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
-              {[1, 2, 3].map((i) => (
-                <li key={i} className="flex items-center space-x-2">
-                  <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                  <span>Suspicious activity detected on tx {i}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Suspicious Activity Trend</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#3b82f6" />
-              </LineChart>
-            </ResponsiveContainer>
+            <h2 className="font-bold mb-4">Search History</h2>
+            {searchHistory.length === 0 ? (
+              <p>No recent searches.</p>
+            ) : (
+              <ul className="space-y-2">
+                {searchHistory.map((query, index) => (
+                  <li
+                    key={index}
+                    className="cursor-pointer text-blue-500 hover:underline"
+                    onClick={() => handleHistoryClick(query)}
+                  >
+                    {query}
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>
     </div>
-  )
+  );
 }
