@@ -1,5 +1,5 @@
 'use client'
-
+import {} from 'recharts'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
@@ -16,7 +16,8 @@ export default function Results() {
   const [showEvents, setShowEvents] = useState(false)
   const [showTx, setShowTx] = useState(false)
   const [predictionScore, setPredictionScore] = useState<number | null>(null)
-  const [scoreMessage, setScoreMessage] = useState<string>('')
+  const [riskPercentage, setRiskPercentage] = useState<number | null>(null)
+  const [scoreMessage, setScoreMessage] = useState('')
 
   const { data: txData, error: txError, isLoading: txLoading } = useTransactionReceipt({ hash: transactionHash })
   const { data: blockData, error: blockError, isLoading: blockLoading } = useBlock({ blockIdentifier: blockNumber })
@@ -28,23 +29,20 @@ export default function Results() {
   }, [hash])
 
   useEffect(() => {
-    if (txData && txData.block_number) {
+    if (txData?.block_number) {
       setBlockNumber(txData.block_number)
     }
   }, [txData])
 
   const handleSendToStarkChan = async () => {
-    const extractedData = [
-      // provisionary
-      txData.execution_status === 'SUCCEEDED' ? 1 : 0,  // Binary: 1 if succeeded else 0
-      Number(txData.block_number  || 0),  // block number of the transaction hash
-      Number(txData.actual_fee?.amount || 0),  // fee of the transaction
-      Number(txData.actual_fee?.unit / 10 || 0),  // Ensure this is a number
-      txData.block_hash.length > 0 ? parseInt(txData.block_hash, 16) : 0,  
-      txData.finality_status === 'ACCEPTED_ON_L2' ? 1 : 0,  // Binary: 1 if accepted else 0
-      Number(txData.events?.[0]?.data?.[0] || 0),  // sender address
-      Number(txData.events?.[0]?.data?.[1]  || 0)   // receiver address
-    ];
+    const extractedData = {
+      block_number: Number(txData.block_number || 0),  
+      fee_in_eth: Number(txData.actual_fee?.amount / 1e18 || 0),  
+      tx_count: blockData.transactions.length,  
+      time_diff: blockData ? (Date.now() / 1000 - blockData.timestamp) : 0,  
+      avg_fee: txData.execution_status === 'SUCCEEDED' ? Number(txData.actual_fee?.amount / 1e18) : 0,
+      std_fee: 0.005  
+    };
 
     try {
       const response = await fetch('https://mltest-production.up.railway.app/predict', {
@@ -52,52 +50,51 @@ export default function Results() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          features: extractedData,
-        }),
+        body: JSON.stringify([extractedData]),  
       });
-  
+
       if (!response.ok) {
         throw new Error(`Error: ${response.statusText}`);
       }
-  
+
       const result = await response.json();
       console.log('Data sent to Stark-chan:', result);
-      
-      // Update the prediction score and message
-      const score = parseFloat(result.prediction).toFixed(2);
+
+      const score = result.decision_scores?.[0] ? parseFloat(result.decision_scores[0]).toFixed(2) : 0;
       setPredictionScore(score);
-      
-      if (score < 0.9) {
-        setScoreMessage('Dangerous');
-      } else {
-        setScoreMessage('Safe');
-      }
-      
+
+      // Calculate risk percentage
+      const riskScore = calculateRiskPercentage(score);
+      setRiskPercentage(riskScore);
+
+      // Update score message
+      updateScoreMessage(score);
+
     } catch (error) {
       console.error('Error sending data to Stark-chan:', error);
     }
   };
 
-  if (txLoading) {
-    return <div className="p-4">Loading transaction data...</div>
-  }
+  const calculateRiskPercentage = (score) => {
+    const MAX_SCORE = 0;
+    const MIN_SCORE = -0.2; 
+    const riskScore = ((MAX_SCORE - score) / (MAX_SCORE - MIN_SCORE)) * 100;
+    return Math.min(Math.max(riskScore, 0), 100); 
+  };
 
-  if (txError) {
-    return <div className="p-4 text-red-500">Error fetching transaction: {txError.message}</div>
-  }
+  const updateScoreMessage = (score) => {
+    if (score < 0) {
+      setScoreMessage('Dangerous');
+    } else {
+      setScoreMessage('Safe');
+    }
+  };
 
-  if (!txData) {
-    return <div className="p-4">No transaction data found for hash: {transactionHash}</div>
-  }
-
-  if (blockLoading) {
-    return <div className="p-4">Loading block data...</div>
-  }
-
-  if (blockError) {
-    return <div className="p-4 text-red-500">Error fetching block data: {blockError.message}</div>
-  }
+  if (txLoading) return <div className="p-4">Loading transaction data...</div>
+  if (txError) return <div className="p-4 text-red-500">Error fetching transaction: {txError.message}</div>
+  if (!txData) return <div className="p-4">No transaction data found for hash: {transactionHash}</div>
+  if (blockLoading) return <div className="p-4">Loading block data...</div>
+  if (blockError) return <div className="p-4 text-red-500">Error fetching block data: {blockError.message}</div>
 
   return (
     <Card className="w-full max-w-4xl mx-auto">
@@ -110,9 +107,7 @@ export default function Results() {
             <div className="flex items-center justify-between bg-yellow-100 p-4 rounded-lg">
               <h3 className="text-lg font-semibold text-green-600">Successfully fetched.</h3>
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-700 mb-2">
-                  Send details to stark-chan for sybil attack detection
-                </p>
+                <p className="text-sm font-medium text-gray-700 mb-2">Send details to AI for Sybil attack detection</p>
                 <button
                   onClick={handleSendToStarkChan}
                   className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
@@ -121,12 +116,11 @@ export default function Results() {
                 </button>
                 {predictionScore !== null && (
                   <div className="bg-black-100 p-4 rounded-lg">
-                  <h3 className="text-lg text-black font-semibold">Prediction Score: {predictionScore}</h3>
-                  <p className="text-sm text-black">{scoreMessage}</p>
-
+                    <h3 className="text-lg text-black font-semibold">Decision Score: {predictionScore}</h3>
+                    <p className="text-sm text-black">{scoreMessage}</p>
+                    <p className="text-sm text-black">Risk percentage: {riskPercentage !== null ? riskPercentage.toFixed(2) + '%' : 'N/A'}</p>
                   </div>
-
-          )}
+                )}
               </div>
             </div>
             <h2 className="text-xl font-bold">Transaction Hash: {transactionHash}</h2>
@@ -139,8 +133,6 @@ export default function Results() {
             <h3 className="text-lg">Finality Status: {txData.finality_status}</h3>
           </div>
 
-
-
           <div className="flex items-center space-x-2">
             <input 
               type="checkbox" 
@@ -149,9 +141,7 @@ export default function Results() {
               onChange={() => setShowEvents(!showEvents)} 
               className="mr-2"
             />
-            <label htmlFor="showEvents" className="text-sm font-medium">
-              Show Events
-            </label>
+            <label htmlFor="showEvents" className="text-sm font-medium">Show Events</label>
           </div>
 
           {showEvents && (
@@ -186,40 +176,11 @@ export default function Results() {
               <h3 className="text-lg">Block Hash: {blockData.block_hash}</h3>
               <h3 className="text-lg">Parent Hash: {blockData.parent_hash}</h3>
               <h3 className="text-lg">Block Number: {blockData.block_number}</h3>
-              <h3 className="text-lg">New Root: {blockData.new_root}</h3>
               <h3 className="text-lg">Timestamp: {new Date(blockData.timestamp * 1000).toLocaleString()}</h3>
               <h3 className="text-lg">Sequencer Address: {blockData.sequencer_address}</h3>
               <h3 className="text-lg">StarkNet Version: {blockData.starknet_version}</h3>
+              <h3 className="text-lg">Number of Block Transactions in the block: {blockData.transactions.length}</h3>
             </div>
-
-            <div className="flex items-center space-x-2">
-              <input 
-                type="checkbox" 
-                id="showTx" 
-                checked={showTx} 
-                onChange={() => setShowTx(!showTx)} 
-                className="mr-2"
-              />
-              <label htmlFor="showTx" className="text-sm font-medium">
-                Show Transactions
-              </label>
-            </div>
-
-            {showTx && (
-              <ul className="space-y-4 list-disc list-inside">
-                {blockData.transactions && blockData.transactions.length > 0 ? (
-                  blockData.transactions.map((tx, index) => (
-                    <li key={index} className="text-sm">
-                      <strong>Transaction Hash:</strong> {tx.hash} <br />
-                      <strong>Block Number:</strong> {tx.block_number} <br />
-                      <strong>Status:</strong> {tx.execution_status}
-                    </li>
-                  ))
-                ) : (
-                  <li>No transactions found for this block.</li>
-                )}
-              </ul>
-            )}
           </div>
         )}
       </CardContent>

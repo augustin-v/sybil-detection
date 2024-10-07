@@ -24,7 +24,7 @@ export default function RootLayout({
             <nav className="container mx-auto px-4 py-4 flex justify-between items-center">
               <Link href="/" className="flex items-center space-x-2">
                 <Brain className="w-8 h-8 text-purple-500" />
-                <span className="text-xl font-bold">Starknet Sybil Detector</span>
+                <span className="text-xl font-bold">Mini Starknet Sybil Detector</span>
               </Link>
               <div className="space-x-4">
                 <NavLink href="/">Home</NavLink>

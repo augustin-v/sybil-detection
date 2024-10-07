@@ -66,7 +66,7 @@ export default function Home() {
       <div>
         <Card>
           <CardContent>
-            <h2 className="font-bold mb-4">Search History</h2>
+            <h2 className="font-bold mb-4">Last 5 Searches History</h2>
             {searchHistory.length === 0 ? (
               <p>No recent searches.</p>
             ) : (
