@@ -46,7 +46,7 @@ export default function Results() {
     }
 
     try {
-      const response = await fetch('https://mltest-production.up.railway.app/predict', {
+      const response = await fetch('https://endpoint-augustin-v-907-1-7bb0e210-7i3yxzspbq-ew.a.run.app/cairo_run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([extractedData]),
